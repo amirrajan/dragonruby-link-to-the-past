@@ -1,19 +1,41 @@
 module GTK
   class Controller
     def up
-      self.key_down.up    || self.key_held.up
+      key_down.up || key_held.up
     end
 
     def down
-      self.key_down.down  || self.key_held.down
+      key_down.down || key_held.down
     end
 
     def left
-      self.key_down.left  || self.key_held.left
+      key_down.left || key_held.left
     end
 
     def right
-      self.key_down.right || self.key_held.right
+      key_down.right || key_held.right
     end
+
+    def directional_vector
+      lr, ud = [left_right, up_down]
+
+      if lr == 0 && ud == 0
+        nil
+      elsif lr.abs == ud.abs
+        [lr.half, ud.half]
+      else
+        [lr, ud]
+      end
+    end
+  end
+end
+
+class Numeric
+  def pos?
+    sign > 0
+  end
+
+  def neg?
+    sign < 0
   end
 end
