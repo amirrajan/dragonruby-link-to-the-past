@@ -1,6 +1,7 @@
 require 'app/gtk_patches.rb'
 
 def defaults args
+  args.state.player.tile_size   = 64
   args.state.player.speed       = 3
   args.state.player.x         ||= 640
   args.state.player.y         ||= 360
@@ -10,47 +11,62 @@ def defaults args
   args.state.debug_label      ||= ""
 end
 
-def player_sprite args, tile_index
+def horizontal_run args
+  tile_index = 0.frame_index(6, 3, true)
   tile_index = 0 if !args.state.player.is_moving
-  tile_size = 24
 
   {
     x: args.state.player.x,
     y: args.state.player.y,
-    w: 64,
-    h: 64,
-    path: 'sprites/horizontal_run.png',
-    tile_x: 0 + (tile_index * 24),
+    w: args.state.player.tile_size,
+    h: args.state.player.tile_size,
+    path: 'sprites/horizontal-run.png',
+    tile_x: 0 + (tile_index * args.state.player.tile_size),
     tile_y: 0,
-    tile_w: 24,
-    tile_w: 24,
+    tile_w: args.state.player.tile_size,
+    tile_h: args.state.player.tile_size,
+    flip_horizontally: args.state.player.dir_x > 0
+  }
+end
+
+def horizontal_stand args
+  {
+    x: args.state.player.x,
+    y: args.state.player.y,
+    w: args.state.player.tile_size,
+    h: args.state.player.tile_size,
+    path: 'sprites/horizontal-stand.png',
     flip_horizontally: args.state.player.dir_x > 0
   }
 end
 
 def render args
-  args.outputs.labels << [30, 30, "Note: You must have a usb controller to play.", 255, 255, 255]
-  args.outputs.static_background_color = [0, 0, 0]
-  args.outputs.sprites << player_sprite(args, 0.frame_index(6, 3, true))
+  if args.state.player.is_moving
+    args.outputs.sprites << horizontal_run(args)
+  else
+    args.outputs.sprites << horizontal_stand(args)
+  end
 end
 
 def render_debug args
-  args.outputs.labels << [30, 30, "#{args.state.debug_label}", 255, 255, 255]
+  args.outputs.labels << [30, 30, "#{args.state.debug_label}"]
 end
 
 def input args
-  if vector = args.inputs.controller_one.directional_vector
+  if vector = args.inputs.directional_vector
     args.state.player.x += vector.x * args.state.player.speed
     args.state.player.y += vector.y * args.state.player.speed
   end
 end
 
 def calc args
-  if vector = args.inputs.controller_one.directional_vector
+  if vector = args.inputs.directional_vector
+    args.state.debug_label = vector
     args.state.player.dir_x = vector.x
     args.state.player.dir_y = vector.y
     args.state.player.is_moving = true
   else
+    args.state.debug_label = vector
     args.state.player.is_moving = false
   end
 end
@@ -59,7 +75,7 @@ end
 def tick args
   defaults args
   render args
-  # render_debug args
+  render_debug args
   input args
   calc args
 end
