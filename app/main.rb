@@ -4,15 +4,27 @@ class Game
   attr_gtk
 
   def defaults
-    player.tile_size   = 64
-    player.speed       = 3
-    player.x         ||= 640
-    player.y         ||= 360
-    player.dir_x     ||=  1
-    player.dir_y     ||= -1
-    player.is_moving ||= false
-    state.watch_list       ||= {}
-    state.show_watch_list    = true if state.tick_count == 0
+    player.tile_size        = 64
+    player.speed            = 3
+    player.slash_frames     = 15
+    player.x              ||= 50
+    player.y              ||= 400
+    player.dir_x          ||=  1
+    player.dir_y          ||= -1
+    player.is_moving      ||= false
+    state.watch_list      ||= {}
+    state.enemies         ||= []
+
+    if state.tick_count == 0
+      state.enemies << {
+        x: 85 + 64,
+        y: 438,
+        w: 64,
+        h: 64,
+        is_hit: false
+      }
+      state.show_watch_list   = true
+    end
   end
 
   def horizontal_run
@@ -45,24 +57,24 @@ class Game
   end
 
   def horizontal_slash
-    tile_index   = player.slash_at.frame_index(5, 3, false)
+    tile_index   = player.slash_at.frame_index(5, player.slash_frames / 5, false)
     tile_index ||= 0
 
     {
       x: player.x,
       y: player.y,
-      w: player.tile_size * 1.2,
-      h: player.tile_size * 1.2,
+      w: player.tile_size * 1.3,
+      h: player.tile_size * 1.3,
       path: 'sprites/horizontal-slash.png',
       tile_x: 0 + (tile_index * 32),
       tile_y: 0,
-      tile_w: 30,
+      tile_w: 28,
       tile_h: 30,
       flip_horizontally: player.dir_x > 0
     }
   end
 
-  def render
+  def render_player
     if player.slash_at
       outputs.sprites << horizontal_slash
     elsif player.is_moving
@@ -72,11 +84,23 @@ class Game
     end
   end
 
+  def render_enemies
+    outputs.solids << state.enemies.map do |e|
+      if e[:is_hit]
+        e.merge({ r: 255 })
+      else
+        e
+      end
+    end
+  end
+
   def render_watch_list
     return if !state.show_watch_list
     outputs.labels << state.watch_list.map.with_index do |(k, v), i|
        [30, 710 - i * 28, "#{k}: #{v || "(nil)"}"]
     end
+
+    outputs.borders << player.slash_collision_rect
   end
 
   def b_down?
@@ -93,7 +117,8 @@ class Game
     state.watch_list[:slash_at] = player.slash_at
   end
 
-  def calc
+  def calc_movement
+    # movement
     if vector = inputs.directional_vector
       state.debug_label = vector
       player.dir_x = vector.x
@@ -104,19 +129,56 @@ class Game
       player.is_moving = false
     end
 
+    state.watch_list[:dir_x] = player.dir_x
     state.watch_list[:is_moving] = player.is_moving
     state.watch_list[:directional_vector] = inputs.directional_vector
-    state.watch_list[:slash_elapsed] = !player.slash_at || player.slash_at.elapsed?(15)
+    state.watch_list[:location] = [player.x, player.y]
+  end
 
-    if player.slash_at && player.slash_at.elapsed?(15)
+  def calc_slash
+    if slash_completed?
       player.slash_at = nil
     end
+
+    if player.dir_x.pos?
+      player.slash_collision_rect = [player.x + player.tile_size,
+                                     player.y + player.tile_size.half - 10,
+                                     20,
+                                     20]
+    else
+      player.slash_collision_rect = [player.x, player.y + player.tile_size.half - 10, 20, 20]
+    end
+
+    state.watch_list[:slash_elapsed] = !player.slash_at || player.slash_at.elapsed?(15)
+    state.watch_list[:slash_can_damage] = slash_can_damage?
+
+    if slash_can_damage?
+      state.enemies.each do |e|
+        if e.intersect_rect? player.slash_collision_rect
+          e[:is_hit] = true
+        end
+      end
+    end
+  end
+
+  def slash_completed?
+    !player.slash_at || player.slash_at.elapsed?(player.slash_frames)
+  end
+
+  def slash_can_damage?
+    !slash_completed? && (player.slash_at + player.slash_frames.idiv(2)) == state.tick_count
+  end
+
+  def calc
+    calc_movement
+    calc_slash
   end
 
   # source is at http://github.com/amirrajan/dragonruby-link-to-the-past
   def tick
     defaults
-    render
+    render_player
+    render_enemies
     render_watch_list
     input
     calc
@@ -133,3 +195,5 @@ def tick args
   $game.args = args
   $game.tick
 end
+
+$gtk.reset
