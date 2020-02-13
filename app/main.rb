@@ -16,15 +16,19 @@ class Game
     state.enemies         ||= []
 
     if state.tick_count == 0
-      state.enemies << {
-        x: 85 + 64,
-        y: 438,
-        w: 64,
-        h: 64,
-        is_hit: false
-      }
+      add_enemy
       state.show_watch_list   = true
     end
+  end
+
+  def add_enemy
+    state.enemies << {
+      x: 1200 * rand,
+      y: 600 * rand,
+      w: 64,
+      h: 64,
+      is_hit: false
+    }
   end
 
   def horizontal_run
@@ -41,7 +45,8 @@ class Game
       tile_y: 0,
       tile_w: player.tile_size,
       tile_h: player.tile_size,
-      flip_horizontally: player.dir_x > 0
+      flip_horizontally: player.dir_x > 0,
+      # a: 40
     }
   end
 
@@ -52,7 +57,8 @@ class Game
       w: player.tile_size,
       h: player.tile_size,
       path: 'sprites/horizontal-stand.png',
-      flip_horizontally: player.dir_x > 0
+      flip_horizontally: player.dir_x > 0,
+      # a: 40
     }
   end
 
@@ -61,15 +67,15 @@ class Game
     tile_index ||= 0
 
     {
-      x: player.x,
-      y: player.y,
-      w: player.tile_size * 1.3,
-      h: player.tile_size * 1.3,
+      x: player.x - 41.25,
+      y: player.y - 41.25,
+      w: 165,
+      h: 165,
       path: 'sprites/horizontal-slash.png',
-      tile_x: 0 + (tile_index * 32),
+      tile_x: 0 + (tile_index * 128),
       tile_y: 0,
-      tile_w: 28,
-      tile_h: 30,
+      tile_w: 128,
+      tile_h: 128,
       flip_horizontally: player.dir_x > 0
     }
   end
@@ -109,7 +115,7 @@ class Game
 
   def input
     # player movement
-    if vector = inputs.directional_vector
+    if slash_completed? && (vector = inputs.directional_vector)
       player.x += vector.x * player.speed
       player.y += vector.y * player.speed
     end
@@ -143,21 +149,30 @@ class Game
     if player.dir_x.pos?
       player.slash_collision_rect = [player.x + player.tile_size,
                                      player.y + player.tile_size.half - 10,
-                                     20,
+                                     40,
                                      20]
     else
-      player.slash_collision_rect = [player.x, player.y + player.tile_size.half - 10, 20, 20]
+      player.slash_collision_rect = [player.x - 32 - 8,
+                                     player.y + player.tile_size.half - 10,
+                                     40,
+                                     20]
     end
 
     state.watch_list[:slash_elapsed] = !player.slash_at || player.slash_at.elapsed?(15)
     state.watch_list[:slash_can_damage] = slash_can_damage?
 
     if slash_can_damage?
+      enemy_hit = false
       state.enemies.each do |e|
         if e.intersect_rect? player.slash_collision_rect
           e[:is_hit] = true
+          enemy_hit = true
         end
       end
+
+      state.enemies.reject! { |e| e[:is_hit] }
+
+      add_enemy if enemy_hit
     end
   end
 
@@ -177,8 +192,8 @@ class Game
   # source is at http://github.com/amirrajan/dragonruby-link-to-the-past
   def tick
     defaults
-    render_player
     render_enemies
+    render_player
     render_watch_list
     input
     calc
