@@ -4,6 +4,7 @@ class Game
   attr_gtk
 
   def defaults
+    state.show_debug_layer  = true if state.tick_count == 0
     player.tile_size        = 64
     player.speed            = 3
     player.slash_frames     = 15
@@ -14,24 +15,13 @@ class Game
     player.is_moving      ||= false
     state.watch_list      ||= {}
     state.enemies         ||= []
-
-    if state.tick_count == 0
-      add_enemy
-      state.show_watch_list   = true
-    end
   end
 
   def add_enemy
-    state.enemies << {
-      x: 1200 * rand,
-      y: 600 * rand,
-      w: 64,
-      h: 64,
-      is_hit: false
-    }
+    state.enemies << { x: 1200 * rand, y: 600 * rand, w: 64, h: 64 }
   end
 
-  def horizontal_run
+  def sprite_horizontal_run
     tile_index = 0.frame_index(6, 3, true)
     tile_index = 0 if !player.is_moving
 
@@ -50,7 +40,7 @@ class Game
     }
   end
 
-  def horizontal_stand
+  def sprite_horizontal_stand
     {
       x: player.x,
       y: player.y,
@@ -62,9 +52,8 @@ class Game
     }
   end
 
-  def horizontal_slash
-    tile_index   = player.slash_at.frame_index(5, player.slash_frames / 5, false)
-    tile_index ||= 0
+  def sprite_horizontal_slash
+    tile_index   = player.slash_at.frame_index(5, player.slash_frames.idiv(5), false) || 0
 
     {
       x: player.x - 41.25,
@@ -82,26 +71,20 @@ class Game
 
   def render_player
     if player.slash_at
-      outputs.sprites << horizontal_slash
+      outputs.sprites << sprite_horizontal_slash
     elsif player.is_moving
-      outputs.sprites << horizontal_run
+      outputs.sprites << sprite_horizontal_run
     else
-      outputs.sprites << horizontal_stand
+      outputs.sprites << sprite_horizontal_stand
     end
   end
 
   def render_enemies
-    outputs.solids << state.enemies.map do |e|
-      if e[:is_hit]
-        e.merge({ r: 255 })
-      else
-        e
-      end
-    end
+    outputs.borders << state.enemies
   end
 
-  def render_watch_list
-    return if !state.show_watch_list
+  def render_debug_layer
+    return if !state.show_debug_layer
     outputs.labels << state.watch_list.map.with_index do |(k, v), i|
        [30, 710 - i * 28, "#{k}: #{v || "(nil)"}"]
     end
@@ -109,18 +92,18 @@ class Game
     outputs.borders << player.slash_collision_rect
   end
 
-  def b_down?
-    inputs.controller_one.key_down.a # classice usb gamepad: a button is actually the b button lol
+  def slash_initiate?
+    # buffalo usb controller has a button and b button swapped lol
+    inputs.controller_one.key_down.a || inputs.keyboard.key_down.j
   end
 
   def input
     # player movement
-    if slash_completed? && (vector = inputs.directional_vector)
+    if slash_complete? && (vector = inputs.directional_vector)
       player.x += vector.x * player.speed
       player.y += vector.y * player.speed
     end
-    player.slash_at = b_down? if b_down?
-    state.watch_list[:slash_at] = player.slash_at
+    player.slash_at = slash_initiate? if slash_initiate?
   end
 
   def calc_movement
@@ -134,57 +117,43 @@ class Game
       state.debug_label = vector
       player.is_moving = false
     end
-
-    state.watch_list[:dir_x] = player.dir_x
-    state.watch_list[:is_moving] = player.is_moving
-    state.watch_list[:directional_vector] = inputs.directional_vector
-    state.watch_list[:location] = [player.x, player.y]
   end
 
   def calc_slash
-    if slash_completed?
-      player.slash_at = nil
-    end
-
+    # re-calc the location of the swords collision box
     if player.dir_x.pos?
       player.slash_collision_rect = [player.x + player.tile_size,
                                      player.y + player.tile_size.half - 10,
-                                     40,
-                                     20]
+                                     40, 20]
     else
       player.slash_collision_rect = [player.x - 32 - 8,
                                      player.y + player.tile_size.half - 10,
-                                     40,
-                                     20]
+                                     40, 20]
     end
 
-    state.watch_list[:slash_elapsed] = !player.slash_at || player.slash_at.elapsed?(15)
-    state.watch_list[:slash_can_damage] = slash_can_damage?
+    # recalc sword's slash state
+    player.slash_at = nil if slash_complete?
 
-    if slash_can_damage?
-      enemy_hit = false
-      state.enemies.each do |e|
-        if e.intersect_rect? player.slash_collision_rect
-          e[:is_hit] = true
-          enemy_hit = true
-        end
-      end
+    # determine collision if the sword is at it's point of damaging
+    return unless slash_can_damage?
 
-      state.enemies.reject! { |e| e[:is_hit] }
-
-      add_enemy if enemy_hit
-    end
+    state.enemies.reject! { |e| e.intersect_rect? player.slash_collision_rect }
   end
 
-  def slash_completed?
+  def slash_complete?
     !player.slash_at || player.slash_at.elapsed?(player.slash_frames)
   end
 
   def slash_can_damage?
-    !slash_completed? && (player.slash_at + player.slash_frames.idiv(2)) == state.tick_count
+    # damage occurs half way into the slash animation
+    return false if slash_complete?
+    return false if (player.slash_at + player.slash_frames.idiv(2)) != state.tick_count
+    return true
   end
 
   def calc
+    # generate an enemy if there aren't any on the screen
+    add_enemy if state.enemies.length == 0
     calc_movement
     calc_slash
   end
@@ -194,7 +163,9 @@ class Game
     defaults
     render_enemies
     render_player
-    render_watch_list
+    outputs.labels << [30, 30, "Gamepad: D-Pad to move. B button to attack."]
+    outputs.labels << [30, 52, "Keyboard: WASD/Arrow keys to move. J to attack."]
+    render_debug_layer
     input
     calc
   end
