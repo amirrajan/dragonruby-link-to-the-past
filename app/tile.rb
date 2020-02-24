@@ -17,6 +17,12 @@ module Tile
     tiles.find { |t| t.intersect_rect? with }
   end
 
+  def self.find_intersection_in_many withs, tiles
+    return nil if !withs
+    return nil if !tiles
+    withs.map { |w| find_intersection w, tiles }.first
+  end
+
   def self.find_intersections with, tiles
     return [] if !with
     return [] if !tiles

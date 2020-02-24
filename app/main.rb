@@ -12,7 +12,7 @@ class Game
 
     player.tile_size          = 64
     player.speed              = 3
-    player.slash_frames       = 15
+    player.slash_frames       = 20
     player.x                ||= 50
     player.y                ||= 600
     player.dir_x            ||=  1
@@ -26,7 +26,7 @@ class Game
   def green_thumb_item
     state.new_entity_strict(:bush) do |b|
       b.placement_locations = Tile.grid_tiles(assets.bush.w, assets.bush.h)
-      b.aoe = nil
+      b.aoe = []
       b.cast_area = nil
     end
   end
@@ -74,10 +74,10 @@ class Game
     tile_index   = player.slash_at.frame_index(5, player.slash_frames.idiv(5), false) || 0
 
     {
-      x: player.x - 41.25,
-      y: player.y - 41.25,
-      w: 165,
-      h: 165,
+      x: player.x - 32,
+      y: player.y - 20,
+      w: 128,
+      h: 128,
       path: 'sprites/horizontal-slash.png',
       tile_x: 0 + (tile_index * 128),
       tile_y: 0,
@@ -108,7 +108,7 @@ class Game
     end
 
     outputs.debug << player.slash_collision_rect.border
-    outputs.debug << player.item.green_thumb.aoe.solid.merge(g: 200, w: 5, h: 5)
+    outputs.debug << player.item.green_thumb.aoe.map { |r| r.solid.merge(g: 200, w: 5, h: 5) }
     outputs.debug << player.terrain_collision_body.border
   end
 
@@ -156,22 +156,26 @@ class Game
                                      20, 20]
 
 
-      player.item.green_thumb.aoe = [player.x + player.tile_size + 27,
-                                     player.y + player.tile_size.half - 10,
-                                     1, 1]
+      player.item.green_thumb.aoe = [
+        [player.x + player.tile_size + 27,
+         player.y + player.tile_size.half + 10,
+         1, 1],
+      ]
     else
       player.slash_collision_rect = [player.x - 32,
                                      player.y + player.tile_size.half - 10,
                                      20, 20]
 
-      player.item.green_thumb.aoe = [player.x - 36,
-                                     player.y + player.tile_size.half - 10,
-                                     1, 1]
+      player.item.green_thumb.aoe = [
+        [player.x - 36,
+         player.y + player.tile_size.half + 10,
+         1, 1],
+      ]
     end
 
-    player.item.green_thumb.cast_area = [player.x - (assets.bush.w * 3),
-                                         player.y - (assets.bush.h * 3),
-                                         assets.bush.w * 6, assets.bush.h * 6]
+    player.item.green_thumb.cast_area = [player.x - (assets.bush.w),
+                                         player.y - assets.bush.h * 1.5,
+                                         assets.bush.w * 4, assets.bush.h * 4]
 
   end
 
@@ -185,8 +189,8 @@ class Game
     return unless slash_can_damage?
 
     if holding_green_thumb?
-      add_bush Tile.find_intersection(player.item.green_thumb.aoe,
-                                      player.item.green_thumb.placement_locations)
+      add_bush Tile.find_intersection_in_many(player.item.green_thumb.aoe,
+                                           player.item.green_thumb.placement_locations)
     else
       state.bushes.delete Tile.find_intersection(player.slash_collision_rect,
                                                  state.bushes)
@@ -212,12 +216,12 @@ class Game
 
   def render_green_thumb
     return unless holding_green_thumb?
-    outputs.borders << Tile.find_intersections(player.item.green_thumb.cast_area,
-                                               player.item.green_thumb.placement_locations)
-    outputs.solids  << Tile.find_intersection(
+    outputs.sprites << Tile.find_intersections(player.item.green_thumb.cast_area,
+                                               player.item.green_thumb.placement_locations).map {|t| t.merge(path: assets.bush.path, a: 80)}
+    outputs.sprites  << Tile.find_intersection_in_many(
       player.item.green_thumb.aoe,
       player.item.green_thumb.placement_locations
-    ).to_hash.merge(a: 128)
+    ).to_hash.merge(a: 128, path: assets.bush.path)
   end
 
   # source is at http://github.com/amirrajan/dragonruby-link-to-the-past
@@ -258,8 +262,18 @@ def tick args
   $game.args = args
   $game.tick
 
-  if args.inputs.controller_one.key_down.l1
-    args.gtk.reset
-    args.gtk.start_replay 'replays/regression.txt'
-  end
+  run_regression if args.inputs.controller_one.key_down.l1
+end
+
+def run_regression
+  $gtk.reset
+  $gtk.start_replay 'replays/regression.txt'
+end
+
+def dev_import_sprite desktop_file_name
+  $gtk.system "cp ~/Desktop/#{desktop_file_name} ./sprites/#{desktop_file_name}"
+end
+
+def dev_debug_layer
+  $gtk.args.state.show_debug_layer = !$gtk.args.state.show_debug_layer
 end
